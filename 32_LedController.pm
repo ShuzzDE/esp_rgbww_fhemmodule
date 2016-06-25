@@ -91,13 +91,15 @@ LedController_Undef(@) {
 sub
 LedController_Set(@){
 	my ($ledDevice, $name, $cmd, @args) = @_;
+   return "Unknown argument $cmd, choose one of hsv rgb state update hue sat val dim on off rotate" if ($cmd eq '?');
+	Log3 ($ledDevice, 5, "$ledDevice->{NAME} (set) called with $cmd, busy flag is $ledDevice->{helper}->{isBusy}");  
 	if($ledDevice->{helper}->{isBusy} eq 1){
-		push @{$ledDevice->{helper}->{cmdQueue}},[($ledDevice, $name, $cmd, @args)];
+		push @{$ledDevice->{helper}->{cmdQueue}},[($name, $cmd, @args)];
 		
-		Log3 ($ledDevice, 4,"$ledDevice->{NAME} pushed ".Dumper(($ledDevice, $name, $cmd, @args))." to queue");
-		Log3 ($ledDevice, 5,"$ledDevice->{NAME} queue is now".Dumper(@{$ledDevice->{helper}->{cmdQueue}}));
+		Log3 ($ledDevice, 4,"$ledDevice->{NAME} (queue) pushed ".Dumper(($ledDevice, $name, $cmd, @args))." to queue");
+		Log3 ($ledDevice, 5,"$ledDevice->{NAME} (queue) queue is now".Dumper(@{$ledDevice->{helper}->{cmdQueue}}));
 	} else {
-		LedController_doSet(@cmd);
+		LedController_doSet(($ledDevice, $name, $cmd, @args));
 	}
 }
 
@@ -108,9 +110,8 @@ LedController_doSet(@) {
   my $descriptor = '';
   my $colorTemp = AttrVal($ledDevice->{NAME},'colorTemp',0);
   $colorTemp = ($colorTemp)?$colorTemp:2700;
-  return "Unknown argument $cmd, choose one of hsv rgb state update hue sat val dim on off rotate" if ($cmd eq '?');
 
-  Log3 ($ledDevice, 5, "$ledDevice->{NAME} called with $cmd, busy flag is $ledDevice->{helper}->{isBusy}");  
+  Log3 ($ledDevice, 5, "$ledDevice->{NAME} (doSet) called with $cmd, busy flag is $ledDevice->{helper}->{isBusy}");  
   
   if ($cmd eq 'hsv') {
 
@@ -516,6 +517,10 @@ LedController_ParseSetHSVColor(@) {
 		} 
 	} else {
 		Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error <empty data received> setting HSV color"); 
+	}
+	if(my ($name, $cmd, @args) = shift $ledDevice->{helper}->{cmdQueue}){
+		Log3 ($ledDevice, 4,"$ledDevice->{NAME} (queue) shifted ".Dumper($name, $cmd, @args)." off the queue");
+		LedController_doSet(($ledDevice, $name, $cmd, @args));		
 	}
 	return undef;
 }
