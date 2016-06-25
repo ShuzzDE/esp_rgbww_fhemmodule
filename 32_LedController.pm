@@ -61,19 +61,26 @@ LedController_Initialize(@) {
 sub
 LedController_Define($$) {
 
-  my ($hash, $def) = @_;
+  my ($ledDevice, $def) = @_;
   my @a = split("[ \t][ \t]*", $def); 
   my $name = $a[0];
   
-  $hash->{IP} = $a[2];
+  $ledDevice->{IP} = $a[2];
   
-  LedController_GetConfig($hash);
+  LedController_GetConfig($ledDevice);
   
-  $attr{$hash->{NAME}}{verbose} = 5;
+  $attr{$ledDevice->{NAME}}{verbose} = 5;
+  
+  #
+  # define the command queue array
+  # and a busy flag
+  #
+  @{$ledDevice->{helper}->{cmdQueue}} = ();
+  $ledDevice->{helper}->{isBusy}=0;
   
   return undef;
   return "wrong syntax: define <name> LedController <type> <ip-or-hostname>" if(@a != 4);  
-  return "$hash->{LEDTYPE} is not supported at $hash->{CONNECTION} ($hash->{IP})";
+  return "$ledDevice->{LEDTYPE} is not supported at $ledDevice->{CONNECTION} ($ledDevice->{IP})";
 }
 
 sub
@@ -82,7 +89,20 @@ LedController_Undef(@) {
 }
 
 sub
-LedController_Set(@) {
+LedController_Set(@){
+	my ($ledDevice, $name, $cmd, @args) = @_;
+	if($ledDevice->{helper}->{isBusy} eq 1){
+		push @{$ledDevice->{helper}->{cmdQueue}},[($ledDevice, $name, $cmd, @args)];
+		
+		Log3 ($ledDevice, 4,"$ledDevice->{NAME} pushed ".Dumper(($ledDevice, $name, $cmd, @args))." to queue");
+		Log3 ($ledDevice, 5,"$ledDevice->{NAME} queue is now".Dumper(@{$ledDevice->{helper}->{cmdQueue}}));
+	} else {
+		LedController_doSet(@cmd);
+	}
+}
+
+sub
+LedController_doSet(@) {
 
   my ($ledDevice, $name, $cmd, @args) = @_;
   my $descriptor = '';
@@ -90,7 +110,7 @@ LedController_Set(@) {
   $colorTemp = ($colorTemp)?$colorTemp:2700;
   return "Unknown argument $cmd, choose one of hsv rgb state update hue sat val dim on off rotate" if ($cmd eq '?');
 
-  Log3 ($ledDevice, 5, "$ledDevice->{NAME} called with $cmd ");  
+  Log3 ($ledDevice, 5, "$ledDevice->{NAME} called with $cmd, busy flag is $ledDevice->{helper}->{isBusy}");  
   
   if ($cmd eq 'hsv') {
 
@@ -379,6 +399,7 @@ LedController_SetHSVColor(@) {
     
     Log3 ($ledDevice, 4, "$ledDevice->{NAME}: set HSV color request \n$param");
 
+	 $ledDevice->{helper}->{isBusy}=1;
     HttpUtils_NonblockingGet($param);
     my ($r, $g, $b)=LedController_HSV2RGB($h, $s, $v);
       my $xrgb=sprintf("%02x%02x%02x",$r,$g,$b);
@@ -475,28 +496,28 @@ LedController_HSV2RGB(@)
 sub
 LedController_ParseSetHSVColor(@) {
 
-my ($param, $err, $data) = @_;
-my ($ledDevice) = $param->{hash};
-my $res;
-
-Log3 ($ledDevice, 4, "$ledDevice->{NAME}: got HSV color response");
-
-if ($err) {
-Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error $err setting HSV color");
-  } elsif ($data) {
-    Log3 ($ledDevice, 5, "$ledDevice->{NAME}: HSV color response data $data");
-    eval { 
-      $res = JSON->new->utf8(1)->decode($data);
-    };
-    if ($@) {
-     Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error decoding HSV color response $@");
-    } else {
-      #if $res->{success} eq 'true';
-    } 
-  } else {
-    Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error <empty data received> setting HSV color"); 
-  }
-  return undef;
+	my ($param, $err, $data) = @_;
+	my ($ledDevice) = $param->{hash};
+	my $res;
+	
+	Log3 ($ledDevice, 4, "$ledDevice->{NAME}: got HSV color response");
+	$ledDevice->{helper}->{isBusy}=0;
+	if ($err) {
+		Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error $err setting HSV color");
+	} elsif ($data) {
+		Log3 ($ledDevice, 5, "$ledDevice->{NAME}: HSV color response data $data");
+		eval { 
+			$res = JSON->new->utf8(1)->decode($data);
+		};
+		if ($@) {
+			Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error decoding HSV color response $@");
+		} else {
+			#if $res->{success} eq 'true';
+		} 
+	} else {
+		Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error <empty data received> setting HSV color"); 
+	}
+	return undef;
 }
 
 1;
