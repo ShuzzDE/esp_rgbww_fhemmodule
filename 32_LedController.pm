@@ -90,16 +90,17 @@ LedController_Undef(@) {
 
 sub
 LedController_Set(@){
-	my ($ledDevice, $name, $cmd, @args) = @_;
+	my @command=@_;
+	my ($ledDevice, $name, $cmd, @args) = @command;
    return "Unknown argument $cmd, choose one of hsv rgb state update hue sat val dim on off rotate" if ($cmd eq '?');
 	Log3 ($ledDevice, 5, "$ledDevice->{NAME} (set) called with $cmd, busy flag is $ledDevice->{helper}->{isBusy}");  
 	if($ledDevice->{helper}->{isBusy} eq 1){
-		push @{$ledDevice->{helper}->{cmdQueue}},[($name, $cmd, @args)];
+		push (@{$ledDevice->{helper}->{cmdQueue}}, [@command]);
 		
 		Log3 ($ledDevice, 4,"$ledDevice->{NAME} (queue) pushed ".Dumper(($ledDevice, $name, $cmd, @args))." to queue");
 		Log3 ($ledDevice, 5,"$ledDevice->{NAME} (queue) queue is now".Dumper(@{$ledDevice->{helper}->{cmdQueue}}));
 	} else {
-		LedController_doSet(($ledDevice, $name, $cmd, @args));
+		LedController_doSet(@command);
 	}
 }
 
@@ -241,7 +242,7 @@ LedController_Get(@) {
 }
 
 sub LedController_isNumeric{
- defined $_[0] && $_[0] =~ /^[+-]?\d+.?\d*$/;
+ defined $_[0] && $_[0] =~ /^[+-]?\d+.?\d+$/;
 }
 
 sub
@@ -402,6 +403,7 @@ LedController_SetHSVColor(@) {
 
 	 $ledDevice->{helper}->{isBusy}=1;
     HttpUtils_NonblockingGet($param);
+    
     my ($r, $g, $b)=LedController_HSV2RGB($h, $s, $v);
       my $xrgb=sprintf("%02x%02x%02x",$r,$g,$b);
       Log3 ($ledDevice, 5, "$ledDevice->{NAME}: calculated RGB as $xrgb");
@@ -518,9 +520,9 @@ LedController_ParseSetHSVColor(@) {
 	} else {
 		Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error <empty data received> setting HSV color"); 
 	}
-	if(my ($name, $cmd, @args) = shift $ledDevice->{helper}->{cmdQueue}){
-		Log3 ($ledDevice, 4,"$ledDevice->{NAME} (queue) shifted ".Dumper($name, $cmd, @args)." off the queue");
-		LedController_doSet(($ledDevice, $name, $cmd, @args));		
+	if(my @command = shift $ledDevice->{helper}->{cmdQueue}){
+		Log3 ($ledDevice, 4,"$ledDevice->{NAME} (queue) shifted ".Dumper(@command)." off the queue");
+		LedController_doSet(@command);		
 	}
 	return undef;
 }
