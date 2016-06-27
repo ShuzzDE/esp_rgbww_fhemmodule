@@ -90,6 +90,9 @@ sub
 LedController_Set(@) {
 
   my ($ledDevice, $name, $cmd, @args) = @_;
+  
+  return "Unknown argument $cmd, choose one of hsv rgb state update hue sat val dim on off rotate" if ($cmd eq '?');
+
   my $descriptor = '';
   my $colorTemp = AttrVal($ledDevice->{NAME},'colorTemp',0);
   $colorTemp = ($colorTemp)?$colorTemp:2700;
