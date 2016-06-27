@@ -25,6 +25,7 @@ use strict;
 use warnings;
 
 use Time::HiRes;
+use Time::HiRes qw(usleep nanosleep);
 use JSON;
 use Data::Dumper;
 
@@ -456,6 +457,7 @@ LedController_doCall(@) {
   $ledDevice->{helper}->{isBusy} = 1;
   my $param = shift @{$ledDevice->{helper}->{cmdQueue}};
   Log3 ($ledDevice, 5, "$ledDevice->{NAME} send API Call ".Dumper($param));
+  usleep(2000);
   HttpUtils_NonblockingGet($param);
   
   return undef;
