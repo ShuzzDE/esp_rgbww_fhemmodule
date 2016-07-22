@@ -92,7 +92,7 @@ LedController_Set(@) {
 
 	my ($ledDevice, $name, $cmd, @args) = @_;
   
-	return "Unknown argument $cmd, choose one of hsv rgb state update hue sat val dim on off rotate" if ($cmd eq '?');
+	return "Unknown argument $cmd, choose one of hsv rgb state update hue sat val dim on off rotate raw" if ($cmd eq '?');
 
 	my $descriptor = '';
 	my $colorTemp = AttrVal($ledDevice->{NAME},'colorTemp',0);
@@ -191,10 +191,18 @@ LedController_Set(@) {
 		#
 		# ugly workaround for pause - since solid doesn't seem to work right now		
 		#
-		if($v == 0){$v=0.1;}else{$v=$v-0.1;}
-		LedController_SetHSVColor($ledDevice, $h, $s, $v, $colorTemp, $t/2, 'fade', $q, $d);
-		if($v == 0.1){$v=0;}else{$v=$v+0.1;}
-		LedController_SetHSVColor($ledDevice, $h, $s, $v, $colorTemp, $t/2, 'fade', $q, $d);
+		# if($v == 0){$v=0.1;}else{$v=$v-0.1;}
+		#LedController_SetHSVColor($ledDevice, $h, $s, $v, $colorTemp, $t/2, 'fade', $q, $d);
+		#if($v == 0.1){$v=0;}else{$v=$v+0.1;}
+		#LedController_SetHSVColor($ledDevice, $h, $s, $v, $colorTemp, $t/2, 'fade', $q, $d);
+		LedController_SetHSVColor($ledDevice, $h, $s, $v, $colorTemp, $t, 'solid', $q, $d);
+		
+	} elsif ( $cmd eq 'raw' ) {
+
+		my ($r, $g, $b, $ww, $cw) = split ',',$args[0];
+		my ($t, $q, $d) = LedController_ArgsHelper($ledDevice, $args[1], $args[2]);
+		LedController_SetRAWColor($ledDevice, $r, $g, $b, $ww, $cw, $colorTemp, $t, (($t==0)?'solid':'fade'), $q, $d);
+
 	} elsif ($cmd eq 'update') {
 		LedController_GetHSVColor($ledDevice);
 	}
@@ -368,7 +376,8 @@ LedController_SetHSVColor(@) {
       method     => "POST",
       header     => "User-Agent: fhem\r\nAccept: application/json",
       parser     =>  \&LedController_ParseSetHSVColor,
-      callback   =>  \&LedController_callback
+      callback   =>  \&LedController_callback,
+      loglevel   => 5
     };
     
     Log3 ($ledDevice, 4, "$ledDevice->{NAME}: set HSV color request \n$param");
@@ -396,6 +405,71 @@ LedController_SetHSVColor(@) {
 }
 
 sub
+LedController_SetRAWColor(@) {
+
+  my ($ledDevice, $r, $g, $b, $ww, $cw, $ct, $t, $c, $q, $d) = @_;
+  Log3 ($ledDevice, 5, "$ledDevice->{NAME}: called SetRAWColor $r, $g, $b, $ww, $cw, $ct, $t, $c, $q, $d");
+  
+  my $ip = $ledDevice->{IP};
+  my $data; 
+  my $cmd;
+  
+  $cmd->{raw}->{r}  = $r;
+  $cmd->{raw}->{g}  = $g;
+  $cmd->{raw}->{b}  = $b;
+  $cmd->{raw}->{ww} = $ww;
+  $cmd->{raw}->{cw} = $cw;
+  $cmd->{raw}->{ct} = $ct;
+  $cmd->{cmd}       = $c;
+  $cmd->{t}         = $t;
+  $cmd->{q}         = $q;
+  $cmd->{d}         = $d;
+  
+  eval { 
+    $data = JSON->new->utf8(1)->encode($cmd);
+  };
+  if ($@) {
+    Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error encoding RAW color request $@");
+  } else {
+    Log3 ($ledDevice, 4, "$ledDevice->{NAME}: encoded json data: $data ");
+    
+    my $param = {
+      url        => "http://$ip/color?mode=RAW",
+      data       => $data,
+      timeout    => 30,
+      hash       => $ledDevice,
+      method     => "POST",
+      header     => "User-Agent: fhem\r\nAccept: application/json",
+      parser     =>  \&LedController_ParseSetRAWColor,
+      callback   =>  \&LedController_callback,
+      loglevel   => 5
+    };
+    
+    Log3 ($ledDevice, 4, "$ledDevice->{NAME}: set RAW color request \n$param");
+    LedController_addCall($ledDevice, $param);  
+  
+    # TODO consolidate into an "_setReadings" 
+    # TODO move the call to the api result section and add error handling
+    
+    # my ($r, $g, $b)=LedController_HSV2RGB($h, $s, $v);
+    # my $xrgb=sprintf("%02x%02x%02x",$r,$g,$b);
+    # Log3 ($ledDevice, 5, "$ledDevice->{NAME}: calculated RGB as $xrgb");
+    # Log3 ($ledDevice, 4, "$ledDevice->{NAME}: begin Readings Update\n   hue: $h\n   sat: $s\n   val:$v\n   ct : $ct\n   HSV: $h,$s,$v\n   RGB: $xrgb");
+
+    # readingsBeginUpdate($ledDevice);
+    # readingsBulkUpdate($ledDevice, 'hue', $h);
+    # readingsBulkUpdate($ledDevice, 'sat', $s);
+    # readingsBulkUpdate($ledDevice, 'val', $v);
+    # readingsBulkUpdate($ledDevice, 'ct' , $ct);
+    # readingsBulkUpdate($ledDevice, 'hsv', "$h,$s,$v");
+    # readingsBulkUpdate($ledDevice, 'rgb', $xrgb);
+    # readingsBulkUpdate($ledDevice, 'state', ($v == 0)?'off':'on');
+    # readingsEndUpdate($ledDevice, 1);
+    
+  }
+  return undef;
+}
+sub
 LedController_ParseSetHSVColor(@) {
 
 	#my ($param, $err, $data) = @_;
@@ -419,6 +493,34 @@ LedController_ParseSetHSVColor(@) {
 		} 
 	} else {
 		Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error <empty data received> setting HSV color"); 
+	}
+	return undef;
+}
+
+sub
+LedController_ParseSetRAWColor(@) {
+
+	#my ($param, $err, $data) = @_;
+	#my ($ledDevice) = $param->{hash};
+	my ($ledDevice, $err, $data) = @_;
+	my $res;
+	
+	Log3 ($ledDevice, 4, "$ledDevice->{NAME}: got HSV color response");
+	$ledDevice->{helper}->{isBusy}=0;
+	if ($err) {
+		Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error $err setting RAW color");
+	} elsif ($data) {
+		Log3 ($ledDevice, 5, "$ledDevice->{NAME}: RAW color response data $data");
+		eval { 
+			$res = JSON->new->utf8(1)->decode($data);
+		};
+		if ($@) {
+			Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error decoding RAW color response $@");
+		} else {
+			#if $res->{success} eq 'true';
+		} 
+	} else {
+		Log3 ($ledDevice, 2, "$ledDevice->{NAME}: error <empty data received> setting RAW color"); 
 	}
 	return undef;
 }
